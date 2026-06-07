@@ -120,32 +120,42 @@ Flags are combinable (e.g. `--codex --prompt`).
 3. Run each selected target's installer module. Each returns a result —
    `{ status: "installed" | "skipped" | "failed", path, detail }`.
 4. Print a summary report, echoing the report style already established in
-   this project's `CLAUDE.md` ("Recovered / Cleaned / Skipped / ..."):
+   this project's `CLAUDE.md` ("Recovered / Cleaned / Skipped / ..."). **All
+   CLI output — prompts, this summary, `--help` text — is in English**,
+   matching npm/CLI convention and the package's primary (English) identity;
+   this is a separate decision from the project's bilingual *playbook* docs
+   (`README.md` / `README.zh-CN.md`), which stay as they are:
 
    ```text
-   已安装：
+   Installed:
      ✔ Codex skill → ~/.codex/skills/mac-storage-cleanup-agent/SKILL.md
-   跳过：
-     - Claude Code: 当前目录已存在 CLAUDE.md，未修改（使用 --yes 可自动合并）
-   后续：
-     对 Codex 说：使用 mac-storage-cleanup-agent skill 帮我清理 Mac 空间...
+   Skipped:
+     - Claude Code: CLAUDE.md already exists in this directory, left untouched
+       (run with --yes to merge automatically)
+   Next steps:
+     Tell Codex: "Use the mac-storage-cleanup-agent skill to help me free disk
+     space on my Mac. Only audit first, don't delete until I confirm."
    ```
 
-   The "后续" section reuses the existing "you can say this to the AI" snippets
-   from the README, so the user doesn't need to flip back to the docs after
-   installing.
+   The "Next steps" section reuses the existing "you can say this to the AI"
+   snippets from the README (translated to English for CLI output), so the
+   user doesn't need to flip back to the docs after installing.
 
 ## Per-Target Behavior
 
 ### Codex (`src/targets/codex.js`)
 
-- Target path: `path.join(os.homedir(), '.codex', 'skills', 'mac-storage-cleanup-agent')`
-- Not present → `fs.mkdir(..., { recursive: true })`, then copy the package's
-  `SKILL.md` into it (this is the file Codex actually loads as the skill
-  entry — not the whole repo).
-- Already present → ask "already installed, overwrite?" (default **yes** under
-  `-y`, since reinstall/upgrade is the expected reason to run this again and
-  overwriting a skill file is lossless).
+- Target path: `path.join(os.homedir(), '.codex', 'skills', 'mac-storage-cleanup-agent', 'SKILL.md')`
+- Existence check is on the **`SKILL.md` file itself**, not just the parent
+  directory (the directory may exist with unrelated contents).
+- File not present (directory may or may not exist) → `fs.mkdir(dir, { recursive: true })`,
+  then copy the package's `SKILL.md` into it. Only `SKILL.md` is copied — not
+  the whole repo — because the file is fully self-contained (its frontmatter
+  `name`/`description` is the entire manifest Codex needs, and it doesn't
+  reference any sibling files or resources).
+- File already present → ask "already installed, overwrite?" (default **yes**
+  under `-y`, since reinstall/upgrade is the expected reason to run this again
+  and overwriting a single self-contained skill file is lossless).
 
 ### Claude Code (`src/targets/claude.js`)
 
@@ -177,11 +187,15 @@ Flags are combinable (e.g. `--codex --prompt`).
   as `{ status: "failed", path, detail: <error message> }`, and surfaced in the
   summary's failed/skipped section — one target's failure does not stop the
   others from running or crash the process.
-- Guiding principle across all targets: **never overwrite without asking**.
-  Within that, the default answer differs by whether overwriting is lossless
-  (Codex skill reinstall, prompt output file → default yes) or could discard
-  user content (CLAUDE.md full overwrite — which is why that case is designed
-  as "append" rather than "overwrite" in the first place).
+- Guiding principle across all targets: **never overwrite without the user's
+  consent** — either interactively (a prompt, answered per run) or upfront
+  (`-y`/`--yes`, the user's blanket consent to "use the safe defaults and don't
+  ask me each time"). `-y` is not a way around asking; it *is* the answer,
+  given once for the whole run. Within that, the default each target picks
+  under `-y` differs by whether the action is lossless (Codex skill reinstall,
+  prompt output file → default yes) or could discard user content (CLAUDE.md
+  full overwrite — which is why that case is designed as "append" rather than
+  "overwrite" in the first place, making default-yes safe there too).
 
 ## Testing
 
